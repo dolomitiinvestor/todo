@@ -1,4 +1,19 @@
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Desk Board</title>
+
+<!-- Add to Home Screen on iPhone: opens full-screen, no Safari chrome -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Desk Board">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#15191b">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -236,6 +251,8 @@
     .task{transition:border-color .18s}
   }
 </style>
+</head>
+<body>
 
 <div id="app">
   <header class="board-head">
@@ -319,52 +336,27 @@ const KEY="deskboard:v3";
 const DAY=864e5;
 let state={tasks:[],recur:[]}, sort="heat", showDone=false, view="board", saveTimer=null;
 
-/* ---------- storage: first backend that works wins ---------- */
-let store=null;
-const stores={
-  artifact:{
-    label:"this chat",
-    ok:async()=>{ if(!window.storage||!window.storage.set) return false;
-      try{ await window.storage.set(KEY+":probe","1"); return true; }catch(e){ return false; } },
-    read:async()=>{ try{ const r=await window.storage.get(KEY); return r&&r.value; }catch(e){ return null; } },
-    write:async v=>{ await window.storage.set(KEY,v); }
-  },
-  local:{
-    label:"this browser",
-    ok:async()=>{ try{ localStorage.setItem(KEY+":probe","1"); localStorage.removeItem(KEY+":probe"); return true; }
-                  catch(e){ return false; } },
-    read:async()=>localStorage.getItem(KEY),
-    write:async v=>{ localStorage.setItem(KEY,v); }
-  },
-  memory:{ label:"nowhere", ok:async()=>true, read:async()=>null, write:async()=>{} }
-};
+/* ---------- storage: saves straight to this browser/device ---------- */
+let storageOk=false;
+try{ localStorage.setItem(KEY+":probe","1"); localStorage.removeItem(KEY+":probe"); storageOk=true; }catch(e){}
 
 async function load(){
-  for(const k of ["artifact","local","memory"]){
-    if(await stores[k].ok()){ store=stores[k]; break; }
-  }
-  /* v2 boards saved under the old key; read it once so nothing is lost */
   try{
-    let raw=await store.read();
-    if(!raw){
-      try{ const old=await (store===stores.local
-              ? Promise.resolve(localStorage.getItem("deskboard:v2"))
-              : window.storage.get("deskboard:v2").then(r=>r&&r.value));
-           if(old) raw=old; }catch(e){}
-    }
+    let raw=storageOk?localStorage.getItem(KEY):null;
+    if(!raw&&storageOk) raw=localStorage.getItem("deskboard:v2"); /* older save key */
     if(raw){ const p=JSON.parse(raw);
       if(Array.isArray(p.tasks)) state.tasks=p.tasks;
       if(Array.isArray(p.recur)) state.recur=p.recur; }
   }catch(e){}
   migrate();
-  foot(store===stores.memory
-    ? "This browser is blocking storage, so nothing saves. Use Export before you close the tab."
-    : "Saving to "+store.label+". Export a backup before moving or renaming this file.");
+  foot(storageOk
+    ? "Saved on this device. Use Export now and then to keep a backup."
+    : "This browser is blocking storage, so nothing saves. Use Export before you close the tab.");
 }
 function save(){
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{
-    try{ await store.write(JSON.stringify(state)); }
+  saveTimer=setTimeout(()=>{
+    try{ localStorage.setItem(KEY,JSON.stringify(state)); }
     catch(e){ foot("Changes stopped saving. Use Export to keep your board."); }
   },250);
 }
@@ -702,4 +694,10 @@ document.getElementById("f-import").addEventListener("change",e=>{
 document.getElementById("tabnote").textContent="One-off work. Marks show days since you added it.";
 setInterval(render,60000);
 load().then(render);
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
 </script>
+</body>
+</html>
