@@ -67,6 +67,8 @@
   }
   .wordmark small{display:block;font-family:var(--mono);font-size:10px;font-weight:400;
     letter-spacing:.16em;color:var(--ink2);margin-top:6px}
+  .board-title{outline:none;border-bottom:1px dashed transparent;padding-bottom:1px}
+  .board-title:hover,.board-title:focus{border-bottom-color:var(--ink3)}
   .gauges{display:flex;gap:20px;margin-left:auto;flex-wrap:wrap}
   .gauge{font-family:var(--mono);text-align:right}
   .gauge b{display:block;font-size:24px;font-weight:600;line-height:1}
@@ -115,6 +117,18 @@
   }
   .toolbar button[aria-pressed=true]{background:var(--ink);color:var(--card);border-color:var(--ink)}
 
+  /* ---- bucket editor ---- */
+  .lane-editor{background:var(--card);border:1px solid var(--ink);padding:10px;
+    margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
+  .lane-editor-row{display:flex;gap:6px;align-items:center}
+  .lane-editor-row .le-label{flex:1 1 160px;min-width:0;border:1px solid var(--rule);
+    background:#fff;padding:6px 7px;font-size:13px;color:var(--ink)}
+  .lane-editor-row .le-note{flex:1 1 200px;min-width:0;border:1px solid var(--rule);
+    background:#fff;padding:6px 7px;font-size:12px;color:var(--ink2)}
+  .lane-editor-row button.kill{font-size:16px}
+  .lane-editor-row button.kill:disabled{opacity:.3;cursor:default}
+  #b-lane-add{align-self:flex-start;margin-top:2px;padding:7px 14px;font-size:12px}
+
   /* ---- importance dots ---- */
   .imp{display:inline-flex;gap:3px;align-items:center;flex:0 0 auto;margin-top:5px}
   .imp i{display:block;width:5.5px;height:5.5px;border-radius:50%;border:1px solid var(--ink3)}
@@ -123,17 +137,17 @@
   .imp.l3 i.on{background:var(--brick);border-color:var(--brick)}
 
   /* ---- lanes ---- */
-  .lanes{display:grid;grid-template-columns:repeat(8,minmax(124px,1fr));
-    gap:8px;align-items:start;overflow-x:auto;padding-bottom:6px}
+  .lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));
+    gap:8px;align-items:start;padding-bottom:6px}
   .lane{background:rgba(248,249,246,.55);border-top:3px solid var(--ink);padding:7px 6px 10px;min-width:0}
-  .lane[data-lane=URGENT]{border-top-color:var(--brick)}
-  .lane[data-lane=EARNINGS]{border-top-color:var(--amber)}
-  .lane[data-lane=QUICK]{border-top-color:var(--pine)}
-  .lane[data-lane=DEEP]{border-top-color:var(--slate)}
-  .lane[data-lane=DEEPER]{border-top-color:var(--indigo)}
-  .lane[data-lane=MODEL]{border-top-color:var(--ultra)}
-  .lane[data-lane=PROCESS]{border-top-color:var(--plum)}
-  .lane[data-lane=OTHER]{border-top-color:var(--ink3)}
+  .lane-p0{border-top-color:var(--brick)}
+  .lane-p1{border-top-color:var(--amber)}
+  .lane-p2{border-top-color:var(--pine)}
+  .lane-p3{border-top-color:var(--slate)}
+  .lane-p4{border-top-color:var(--indigo)}
+  .lane-p5{border-top-color:var(--ultra)}
+  .lane-p6{border-top-color:var(--plum)}
+  .lane-p7{border-top-color:var(--moss)}
   .lane-head{display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-bottom:8px}
   .lane-head h2{font-family:var(--display);font-weight:700;text-transform:uppercase;
     font-size:12.5px;letter-spacing:.04em;margin:0;line-height:1.1}
@@ -142,7 +156,6 @@
   .lane-head .n{font-family:var(--mono);font-size:11px;color:var(--ink3)}
   .lane-empty{font-size:11px;color:var(--ink3);padding:3px 1px 1px}
   @media (max-width:560px){
-    .lanes{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));overflow-x:visible}
     .lane-head h2{font-size:15px}
     .lane-head em{font-size:11px}
   }
@@ -256,7 +269,8 @@
 
 <div id="app">
   <header class="board-head">
-    <h1 class="wordmark">Desk Board<small id="stamp"></small></h1>
+    <h1 class="wordmark"><span id="boardTitle" class="board-title" contenteditable="true"
+      spellcheck="false" role="textbox" aria-label="Board title"></span><small id="stamp"></small></h1>
     <div class="gauges" id="gauges"></div>
   </header>
 
@@ -286,10 +300,16 @@
       <button data-sort="due" aria-pressed="false">Deadline</button>
       <button data-sort="age" aria-pressed="false">Oldest</button>
       <button data-sort="imp" aria-pressed="false">Importance</button>
+      <button id="t-lanes" aria-pressed="false">Edit buckets</button>
       <button id="t-done" aria-pressed="false" style="margin-left:auto">Show finished</button>
       <button id="b-export">Export</button>
       <button id="b-import">Import</button>
       <input type="file" id="f-import" accept=".json,application/json" style="display:none">
+    </div>
+
+    <div class="lane-editor" id="laneEditor" hidden>
+      <div class="lane-editor-rows" id="laneEditorRows"></div>
+      <button type="button" id="b-lane-add" class="file-btn">+ Add bucket</button>
     </div>
 
     <div class="lanes" id="lanes"></div>
@@ -315,7 +335,7 @@
 </div>
 
 <script>
-const LANES=[
+const DEFAULT_LANES=[
   {id:"URGENT",  label:"Urgent / ad hoc",    note:"Do it next"},
   {id:"EARNINGS",label:"Earnings / event",    note:"Fixed date, can't slip"},
   {id:"QUICK",   label:"Quick wins",          note:"Under 60 minutes"},
@@ -325,6 +345,7 @@ const LANES=[
   {id:"PROCESS", label:"Process improvement", note:"Makes future work faster"},
   {id:"OTHER",   label:"Other",               note:"Doesn't fit above"}
 ];
+const DEFAULT_TITLE="Desk Board";
 const CADENCES=[
   {id:"weekly",   label:"Weekly",    days:7},
   {id:"biweekly", label:"Every 2 weeks", days:14},
@@ -334,7 +355,8 @@ const CADENCES=[
 ];
 const KEY="deskboard:v3";
 const DAY=864e5;
-let state={tasks:[],recur:[]}, sort="heat", showDone=false, view="board", saveTimer=null;
+let state={tasks:[],recur:[],title:DEFAULT_TITLE,lanes:DEFAULT_LANES.map(L=>({...L}))},
+  sort="heat", showDone=false, view="board", saveTimer=null;
 
 /* ---------- storage: saves straight to this browser/device ---------- */
 let storageOk=false;
@@ -346,9 +368,15 @@ async function load(){
     if(!raw&&storageOk) raw=localStorage.getItem("deskboard:v2"); /* older save key */
     if(raw){ const p=JSON.parse(raw);
       if(Array.isArray(p.tasks)) state.tasks=p.tasks;
-      if(Array.isArray(p.recur)) state.recur=p.recur; }
+      if(Array.isArray(p.recur)) state.recur=p.recur;
+      if(typeof p.title==="string"&&p.title.trim()) state.title=p.title.trim().slice(0,60);
+      if(Array.isArray(p.lanes)&&p.lanes.length) state.lanes=p.lanes
+        .filter(L=>L&&L.id)
+        .map(L=>({id:String(L.id),label:String(L.label||L.id),note:String(L.note||"")})); }
   }catch(e){}
   migrate();
+  document.getElementById("boardTitle").textContent=state.title;
+  syncTitle();
   foot(storageOk
     ? "Saved on this device. Use Export now and then to keep a backup."
     : "This browser is blocking storage, so nothing saves. Use Export before you close the tab.");
@@ -364,14 +392,21 @@ function foot(m){document.getElementById("foot").textContent=m;}
 
 /* Retired lanes get remapped instead of silently emptying. */
 function migrate(){
-  const valid=new Set(LANES.map(L=>L.id));
+  if(!Array.isArray(state.lanes)||!state.lanes.length) state.lanes=DEFAULT_LANES.map(L=>({...L}));
+  const valid=new Set(state.lanes.map(L=>L.id));
   const renamed={BLOCKED:"DEEPER",LATER:"OTHER",ROUTINE:"OTHER",ADHOC:"URGENT"};
   state.tasks.forEach(t=>{
-    if(renamed[t.lane]) t.lane=renamed[t.lane];
-    if(!valid.has(t.lane)) t.lane="OTHER";
+    if(renamed[t.lane]&&valid.has(renamed[t.lane])) t.lane=renamed[t.lane];
+    if(!valid.has(t.lane)) t.lane=state.lanes[0].id;
     if(!(t.imp>=1&&t.imp<=3)) t.imp=2;
   });
   state.recur.forEach(r=>{ if(!(r.imp>=1&&r.imp<=3)) r.imp=2; });
+}
+function syncTitle(){
+  const t=state.title||DEFAULT_TITLE;
+  document.title=t;
+  const meta=document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if(meta) meta.content=t;
 }
 
 /* ---------- backup ---------- */
@@ -501,7 +536,7 @@ function renderGauges(){
 }
 
 function renderBoard(){
-  document.getElementById("lanes").innerHTML=LANES.map(L=>{
+  document.getElementById("lanes").innerHTML=state.lanes.map((L,i)=>{
     let rows=state.tasks.filter(t=>t.lane===L.id&&(showDone||!t.done));
     rows.sort((a,b)=>{
       if(a.done!==b.done) return a.done?1:-1;
@@ -516,11 +551,30 @@ function renderBoard(){
       return heat(b)-heat(a);
     });
     const open=rows.filter(t=>!t.done).length;
-    return `<section class="lane" data-lane="${L.id}">
-      <div class="lane-head"><div><h2>${L.label}</h2><em>${L.note}</em></div><span class="n">${open}</span></div>
+    return `<section class="lane lane-p${i%8}" data-lane="${L.id}">
+      <div class="lane-head"><div><h2>${esc(L.label)}</h2>${L.note?`<em>${esc(L.note)}</em>`:""}</div><span class="n">${open}</span></div>
       ${rows.length?rows.map(card).join(""):`<p class="lane-empty">Nothing here.</p>`}
     </section>`;
   }).join("");
+  populateLaneSelect();
+  renderLaneEditor();
+}
+
+function populateLaneSelect(){
+  const sel=document.getElementById("f-lane");
+  const prev=sel.value;
+  sel.innerHTML=state.lanes.map(L=>`<option value="${L.id}">${esc(L.label)}</option>`).join("");
+  sel.value=state.lanes.some(L=>L.id===prev)?prev:
+    (state.lanes.find(L=>L.id==="QUICK")?"QUICK":state.lanes[0].id);
+}
+
+function renderLaneEditor(){
+  document.getElementById("laneEditorRows").innerHTML=state.lanes.map(L=>`
+    <div class="lane-editor-row">
+      <input type="text" class="le-label" data-lane-label="${L.id}" value="${esc(L.label)}" maxlength="40" aria-label="Bucket name">
+      <input type="text" class="le-note" data-lane-note="${L.id}" value="${esc(L.note||"")}" maxlength="60" placeholder="subtitle (optional)" aria-label="Bucket subtitle">
+      <button type="button" class="kill" data-lane-del="${L.id}" aria-label="Delete bucket"${state.lanes.length<=1?" disabled":""}>×</button>
+    </div>`).join("");
 }
 
 function card(t){
@@ -538,7 +592,7 @@ function card(t){
     const pct=total>0?Math.min(100,Math.max(2,(ageMs(t)/total)*100)):100;
     rail=`<div class="rail ${d.cls}"><span style="width:${ms<0?100:pct}%"></span></div>`;
   }
-  const opts=LANES.map(L=>`<option value="${L.id}"${L.id===t.lane?" selected":""}>${L.label}</option>`).join("");
+  const opts=state.lanes.map(L=>`<option value="${L.id}"${L.id===t.lane?" selected":""}>${esc(L.label)}</option>`).join("");
   const imps=[3,2,1].map(n=>`<option value="${n}"${n===(t.imp||2)?" selected":""}>${n}</option>`).join("");
 
   return `<article class="task imp${t.imp||2} ${t.done?"done":d.cls==="late"?"late":d.cls==="soon"?"today":""}">
@@ -600,8 +654,6 @@ function recRow(r){
 }
 
 /* ---------- populate selects ---------- */
-document.getElementById("f-lane").innerHTML=
-  LANES.map(L=>`<option value="${L.id}"${L.id==="QUICK"?" selected":""}>${L.label}</option>`).join("");
 document.getElementById("r-cad").innerHTML=
   CADENCES.map(C=>`<option value="${C.id}"${C.id==="quarterly"?" selected":""}>${C.label}</option>`).join("");
 document.getElementById("r-next").value=ymd(new Date());
@@ -656,12 +708,58 @@ document.getElementById("sched").addEventListener("click",e=>{
   }
   else if(b.dataset.rsend){
     const r=state.recur.find(x=>x.id===b.dataset.rsend);
-    state.tasks.push({id:uid(),title:r.title,lane:"OTHER",imp:r.imp,
+    const dest=state.lanes.find(L=>L.id==="OTHER")||state.lanes[state.lanes.length-1];
+    state.tasks.push({id:uid(),title:r.title,lane:dest.id,imp:r.imp,
       due:r.next,assigned:Date.now(),done:false});
-    foot("“"+r.title+"” filed under Other on the board, due "+r.next+".");
+    foot("“"+r.title+"” filed under "+dest.label+" on the board, due "+r.next+".");
   }
   else if(b.dataset.rkill){ state.recur=state.recur.filter(x=>x.id!==b.dataset.rkill); }
   else return;
+  save();render();
+});
+
+/* ---------- board title ---------- */
+const titleEl=document.getElementById("boardTitle");
+titleEl.addEventListener("keydown",e=>{
+  if(e.key==="Enter"){ e.preventDefault(); titleEl.blur(); }
+});
+titleEl.addEventListener("blur",()=>{
+  const v=titleEl.textContent.replace(/\s+/g," ").trim().slice(0,60)||DEFAULT_TITLE;
+  titleEl.textContent=v;
+  if(v!==state.title){ state.title=v; syncTitle(); save(); }
+});
+
+/* ---------- buckets ---------- */
+document.getElementById("t-lanes").addEventListener("click",e=>{
+  const editor=document.getElementById("laneEditor");
+  editor.hidden=!editor.hidden;
+  e.currentTarget.setAttribute("aria-pressed",!editor.hidden);
+});
+document.getElementById("b-lane-add").addEventListener("click",()=>{
+  state.lanes.push({id:"L"+uid(),label:"New bucket",note:""});
+  save();render();
+});
+document.getElementById("laneEditor").addEventListener("change",e=>{
+  const inp=e.target;
+  if(inp.dataset.laneLabel){
+    const L=state.lanes.find(x=>x.id===inp.dataset.laneLabel);
+    L.label=inp.value.trim()||L.label;
+    save();render();
+  }else if(inp.dataset.laneNote){
+    const L=state.lanes.find(x=>x.id===inp.dataset.laneNote);
+    L.note=inp.value.trim();
+    save();render();
+  }
+});
+document.getElementById("laneEditor").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b||!b.dataset.laneDel) return;
+  if(state.lanes.length<=1) return;
+  const L=state.lanes.find(x=>x.id===b.dataset.laneDel); if(!L) return;
+  const affected=state.tasks.filter(t=>t.lane===L.id).length;
+  const fallback=state.lanes.find(x=>x.id!==L.id);
+  if(affected&&!confirm(`Delete "${L.label}"? ${affected} task${affected===1?"":"s"} will move to "${fallback.label}".`)) return;
+  state.lanes=state.lanes.filter(x=>x.id!==L.id);
+  state.tasks.forEach(t=>{ if(t.lane===L.id) t.lane=fallback.id; });
   save();render();
 });
 
