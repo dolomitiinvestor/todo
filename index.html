@@ -252,6 +252,11 @@
   .rec-acts button.kill{border:0;color:var(--ink3);font-size:15px;padding:1px 3px}
   .rec-acts button.kill:hover{color:var(--brick)}
 
+  .sync-desc{font-size:11px;color:var(--ink2);margin:0 0 4px;line-height:1.4}
+  .sync-desc a{color:var(--slate)}
+  .sync-status{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin:2px 0 0}
+  .sync-row-auto{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);padding:2px 0}
+
   .footnote{font-family:var(--mono);font-size:10px;color:var(--ink3);
     margin-top:18px;border-top:1px solid var(--rule);padding-top:8px;letter-spacing:.04em}
   [hidden]{display:none !important}
@@ -301,6 +306,7 @@
       <button data-sort="age" aria-pressed="false">Oldest</button>
       <button data-sort="imp" aria-pressed="false">Importance</button>
       <button id="t-lanes" aria-pressed="false">Edit buckets</button>
+      <button id="t-sync" aria-pressed="false">Sync</button>
       <button id="t-done" aria-pressed="false" style="margin-left:auto">Show finished</button>
       <button id="b-export">Export</button>
       <button id="b-import">Import</button>
@@ -310,6 +316,29 @@
     <div class="lane-editor" id="laneEditor" hidden>
       <div class="lane-editor-rows" id="laneEditorRows"></div>
       <button type="button" id="b-lane-add" class="file-btn">+ Add bucket</button>
+    </div>
+
+    <div class="lane-editor" id="syncPanel" hidden>
+      <p class="sync-desc">Sync this board across devices with a private GitHub Gist. Create a
+        <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Desk+Board+sync" target="_blank" rel="noopener">personal access token</a>
+        with the <strong>gist</strong> scope, paste it below, then leave Gist ID blank the first time to create one.
+        The token is stored only in this browser and sent only to api.github.com.</p>
+      <div class="lane-editor-row">
+        <input type="password" id="sync-token" class="le-label" placeholder="Personal access token (gist scope)" autocomplete="off">
+      </div>
+      <div class="lane-editor-row">
+        <input type="text" id="sync-gist" class="le-note" placeholder="Gist ID (leave blank to create new)" autocomplete="off">
+      </div>
+      <div class="lane-editor-row">
+        <label class="sync-row-auto"><input type="checkbox" id="sync-auto"> Auto-sync (push on change, pull on open/return)</label>
+      </div>
+      <div class="lane-editor-row" style="gap:8px;flex-wrap:wrap">
+        <button type="button" id="sync-save" class="file-btn">Save connection</button>
+        <button type="button" id="sync-push">Push now</button>
+        <button type="button" id="sync-pull">Pull now</button>
+        <button type="button" id="sync-disconnect">Disconnect</button>
+      </div>
+      <p class="sync-status" id="sync-status"></p>
     </div>
 
     <div class="lanes" id="lanes"></div>
@@ -354,9 +383,12 @@ const CADENCES=[
   {id:"annual",   label:"Annual",    days:365}
 ];
 const KEY="deskboard:v3";
+const SYNC_KEY="deskboard:sync:v1";
+const GIST_FILENAME="desk-board-sync.json";
 const DAY=864e5;
-let state={tasks:[],recur:[],title:DEFAULT_TITLE,lanes:DEFAULT_LANES.map(L=>({...L}))},
-  sort="heat", showDone=false, view="board", saveTimer=null;
+let state={tasks:[],recur:[],title:DEFAULT_TITLE,lanes:DEFAULT_LANES.map(L=>({...L})),updatedAt:0},
+  sort="heat", showDone=false, view="board", saveTimer=null, syncPushTimer=null;
+let syncCfg={token:"",gistId:"",auto:false,lastSyncedAt:0};
 
 /* ---------- storage: saves straight to this browser/device ---------- */
 let storageOk=false;
@@ -372,7 +404,8 @@ async function load(){
       if(typeof p.title==="string"&&p.title.trim()) state.title=p.title.trim().slice(0,60);
       if(Array.isArray(p.lanes)&&p.lanes.length) state.lanes=p.lanes
         .filter(L=>L&&L.id)
-        .map(L=>({id:String(L.id),label:String(L.label||L.id),note:String(L.note||"")})); }
+        .map(L=>({id:String(L.id),label:String(L.label||L.id),note:String(L.note||"")}));
+      if(typeof p.updatedAt==="number") state.updatedAt=p.updatedAt; }
   }catch(e){}
   migrate();
   document.getElementById("boardTitle").textContent=state.title;
@@ -384,11 +417,82 @@ async function load(){
 function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{
+    state.updatedAt=Date.now();
     try{ localStorage.setItem(KEY,JSON.stringify(state)); }
     catch(e){ foot("Changes stopped saving. Use Export to keep your board."); }
+    if(syncCfg.auto&&syncCfg.token&&syncCfg.gistId){
+      clearTimeout(syncPushTimer);
+      syncPushTimer=setTimeout(()=>pushToGist(false),1200);
+    }
   },250);
 }
 function foot(m){document.getElementById("foot").textContent=m;}
+
+/* ---------- sync: a private GitHub Gist as the shared copy ---------- */
+function loadSyncCfg(){
+  try{ const raw=localStorage.getItem(SYNC_KEY); if(raw) syncCfg=Object.assign(syncCfg,JSON.parse(raw)); }
+  catch(e){}
+}
+function saveSyncCfg(){
+  try{ localStorage.setItem(SYNC_KEY,JSON.stringify(syncCfg)); }catch(e){}
+}
+function syncStatus(m){
+  const el=document.getElementById("sync-status");
+  if(el) el.textContent=m;
+}
+async function pushToGist(manual){
+  if(!syncCfg.token){ if(manual) syncStatus("Add a token first."); return; }
+  state.updatedAt=Date.now();
+  try{
+    if(!syncCfg.gistId){
+      const res=await fetch("https://api.github.com/gists",{method:"POST",
+        headers:{Authorization:"token "+syncCfg.token,Accept:"application/vnd.github+json","Content-Type":"application/json"},
+        body:JSON.stringify({description:"Desk Board sync data",public:false,
+          files:{[GIST_FILENAME]:{content:JSON.stringify(state,null,2)}}})});
+      if(!res.ok) throw new Error("create failed ("+res.status+")");
+      const g=await res.json();
+      syncCfg.gistId=g.id; saveSyncCfg();
+      const gi=document.getElementById("sync-gist"); if(gi) gi.value=g.id;
+    }else{
+      const res=await fetch("https://api.github.com/gists/"+encodeURIComponent(syncCfg.gistId),{method:"PATCH",
+        headers:{Authorization:"token "+syncCfg.token,Accept:"application/vnd.github+json","Content-Type":"application/json"},
+        body:JSON.stringify({files:{[GIST_FILENAME]:{content:JSON.stringify(state,null,2)}}})});
+      if(!res.ok) throw new Error("push failed ("+res.status+")");
+    }
+    try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+    syncCfg.lastSyncedAt=state.updatedAt; saveSyncCfg();
+    syncStatus("Synced to gist at "+new Date(syncCfg.lastSyncedAt).toLocaleTimeString()+".");
+  }catch(e){ syncStatus("Push failed: "+(e&&e.message||e)); }
+}
+async function pullFromGist(manual){
+  if(!syncCfg.token||!syncCfg.gistId){ if(manual) syncStatus("Connect a token and gist ID first."); return; }
+  try{
+    const res=await fetch("https://api.github.com/gists/"+encodeURIComponent(syncCfg.gistId),
+      {headers:{Authorization:"token "+syncCfg.token,Accept:"application/vnd.github+json"}});
+    if(!res.ok) throw new Error("pull failed ("+res.status+")");
+    const g=await res.json();
+    const file=g.files&&g.files[GIST_FILENAME];
+    if(!file||!file.content) throw new Error("gist has no sync file yet");
+    const remote=JSON.parse(file.content);
+    const remoteUpdated=remote.updatedAt||0, localUpdated=state.updatedAt||0;
+    if(manual||remoteUpdated>localUpdated){
+      if(Array.isArray(remote.tasks)) state.tasks=remote.tasks;
+      if(Array.isArray(remote.recur)) state.recur=remote.recur;
+      if(typeof remote.title==="string"&&remote.title.trim()) state.title=remote.title.trim().slice(0,60);
+      if(Array.isArray(remote.lanes)&&remote.lanes.length) state.lanes=remote.lanes
+        .filter(L=>L&&L.id)
+        .map(L=>({id:String(L.id),label:String(L.label||L.id),note:String(L.note||"")}));
+      state.updatedAt=remoteUpdated||Date.now();
+      migrate();
+      try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+      document.getElementById("boardTitle").textContent=state.title; syncTitle();
+      render();
+      syncCfg.lastSyncedAt=state.updatedAt; saveSyncCfg();
+      syncStatus("Pulled latest from gist at "+new Date().toLocaleTimeString()+".");
+    }
+    /* when not manual and remote isn't newer, stay silent to avoid status spam on background checks */
+  }catch(e){ syncStatus("Pull failed: "+(e&&e.message||e)); }
+}
 
 /* Retired lanes get remapped instead of silently emptying. */
 function migrate(){
@@ -735,6 +839,45 @@ document.getElementById("t-lanes").addEventListener("click",e=>{
   editor.hidden=!editor.hidden;
   e.currentTarget.setAttribute("aria-pressed",!editor.hidden);
 });
+
+/* ---------- sync panel ---------- */
+document.getElementById("t-sync").addEventListener("click",e=>{
+  const panel=document.getElementById("syncPanel");
+  panel.hidden=!panel.hidden;
+  e.currentTarget.setAttribute("aria-pressed",!panel.hidden);
+  if(!panel.hidden){
+    document.getElementById("sync-token").value=syncCfg.token||"";
+    document.getElementById("sync-gist").value=syncCfg.gistId||"";
+    document.getElementById("sync-auto").checked=!!syncCfg.auto;
+    syncStatus(syncCfg.gistId
+      ? "Gist "+syncCfg.gistId+(syncCfg.lastSyncedAt?" · last synced "+new Date(syncCfg.lastSyncedAt).toLocaleString():" · not yet synced")
+      : "Not connected yet.");
+  }
+});
+document.getElementById("sync-save").addEventListener("click",async()=>{
+  syncCfg.token=document.getElementById("sync-token").value.trim();
+  syncCfg.gistId=document.getElementById("sync-gist").value.trim();
+  syncCfg.auto=document.getElementById("sync-auto").checked;
+  saveSyncCfg();
+  if(!syncCfg.token){ syncStatus("Add a token to connect."); return; }
+  if(!syncCfg.gistId){ syncStatus("Creating gist…"); await pushToGist(true); }
+  else{ syncStatus("Connected. Pulling…"); await pullFromGist(true); }
+});
+document.getElementById("sync-auto").addEventListener("change",e=>{
+  syncCfg.auto=e.target.checked; saveSyncCfg();
+});
+document.getElementById("sync-push").addEventListener("click",()=>{ syncStatus("Pushing…"); pushToGist(true); });
+document.getElementById("sync-pull").addEventListener("click",()=>{ syncStatus("Pulling…"); pullFromGist(true); });
+document.getElementById("sync-disconnect").addEventListener("click",()=>{
+  syncCfg={token:"",gistId:"",auto:false,lastSyncedAt:0}; saveSyncCfg();
+  document.getElementById("sync-token").value="";
+  document.getElementById("sync-gist").value="";
+  document.getElementById("sync-auto").checked=false;
+  syncStatus("Disconnected. Your data stays on this device.");
+});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&syncCfg.auto&&syncCfg.token&&syncCfg.gistId) pullFromGist(false);
+});
 document.getElementById("b-lane-add").addEventListener("click",()=>{
   state.lanes.push({id:"L"+uid(),label:"New bucket",note:""});
   save();render();
@@ -790,8 +933,14 @@ document.getElementById("f-import").addEventListener("change",e=>{
 });
 
 document.getElementById("tabnote").textContent="One-off work. Marks show days since you added it.";
-setInterval(render,60000);
-load().then(render);
+setInterval(()=>{
+  render();
+  if(syncCfg.auto&&syncCfg.token&&syncCfg.gistId&&document.visibilityState==="visible") pullFromGist(false);
+},60000);
+loadSyncCfg();
+load().then(render).then(()=>{
+  if(syncCfg.auto&&syncCfg.token&&syncCfg.gistId) return pullFromGist(false);
+});
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
