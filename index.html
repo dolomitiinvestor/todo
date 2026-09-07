@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Desk Board</title>
+<title>TODO</title>
 
 <!-- Add to Home Screen on iPhone: opens full-screen, no Safari chrome -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Desk Board">
+<meta name="apple-mobile-web-app-title" content="TODO">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#15191b">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -365,16 +365,20 @@
 
 <script>
 const DEFAULT_LANES=[
-  {id:"URGENT",  label:"Urgent / ad hoc",    note:"Do it next"},
-  {id:"EARNINGS",label:"Earnings / event",    note:"Fixed date, can't slip"},
-  {id:"QUICK",   label:"Quick wins",          note:"Under 60 minutes"},
-  {id:"DEEP",    label:"Deep work",           note:"1–3 hours"},
-  {id:"DEEPER",  label:"Deeper work",         note:"Half a day or more"},
-  {id:"MODEL",   label:"Modeling",            note:"Build or update a model"},
-  {id:"PROCESS", label:"Process improvement", note:"Makes future work faster"},
-  {id:"OTHER",   label:"Other",               note:"Doesn't fit above"}
+  {id:"TODAY",    label:"Today",               note:""},
+  {id:"QUICK",    label:"Quick wins",          note:""},
+  {id:"JOURNAL",  label:"Journal",             note:""},
+  {id:"SOCIAL",   label:"Social/networking",   note:""},
+  {id:"TRAVEL",   label:"Travel",              note:""},
+  {id:"PROCESS",  label:"Process improvement", note:""},
+  {id:"FITNESS",  label:"Fitness",             note:""},
+  {id:"BUY",      label:"Buy",                 note:""},
+  {id:"CAREER",   label:"Career",              note:""},
+  {id:"OTHER",    label:"Other",               note:""},
+  {id:"DEEPER",   label:"Deeper work",         note:""},
+  {id:"CLAUDE",   label:"Claude code",         note:""}
 ];
-const DEFAULT_TITLE="Desk Board";
+const DEFAULT_TITLE="TODO";
 const CADENCES=[
   {id:"weekly",   label:"Weekly",    days:7},
   {id:"biweekly", label:"Every 2 weeks", days:14},

@@ -1,6 +1,6 @@
 {
-  "name": "Desk Board",
-  "short_name": "Desk Board",
+  "name": "TODO",
+  "short_name": "TODO",
   "description": "A todo board with categories, deadlines, and recurring tasks.",
   "start_url": "./index.html",
   "scope": "./",
