@@ -12,6 +12,16 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#15191b">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<script>
+/* Set the saved theme before first paint so there's no light-mode flash. */
+(function(){
+  try{
+    var t=localStorage.getItem("deskboard:theme");
+    if(t==="dark"||t==="light") document.documentElement.setAttribute("data-theme",t);
+  }catch(e){}
+})();
+</script>
 <link rel="manifest" href="manifest.json">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,17 +48,64 @@
     --edge2:#b0c0c2;
     --tint3:#f3d7d1;
     --edge3:#c9948a;
+    --input-bg:#fff;
+    --lane-bg:rgba(248,249,246,.55);
     --display:'Archivo Narrow',"Helvetica Neue Condensed",Impact,sans-serif;
     --body:'IBM Plex Sans',system-ui,sans-serif;
     --mono:'IBM Plex Mono',ui-monospace,monospace;
   }
+  :root[data-theme="dark"]{
+    --ink:#e7ebe7;
+    --ink2:#a9b3ae;
+    --ink3:#78847e;
+    --ground:#14171a;
+    --card:#1d2224;
+    --rule:#3a4244;
+    --brick:#e2685a;
+    --pine:#4fae95;
+    --slate:#6ea3c4;
+    --amber:#dba449;
+    --indigo:#8f88d6;
+    --ultra:#59acdf;
+    --moss:#a9b876;
+    --plum:#c07999;
+    --tint2:#232a2b;
+    --edge2:#3d4a4d;
+    --tint3:#332120;
+    --edge3:#6e3a34;
+    --input-bg:#242a2c;
+    --lane-bg:rgba(28,33,35,.55);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ink:#e7ebe7;
+      --ink2:#a9b3ae;
+      --ink3:#78847e;
+      --ground:#14171a;
+      --card:#1d2224;
+      --rule:#3a4244;
+      --brick:#e2685a;
+      --pine:#4fae95;
+      --slate:#6ea3c4;
+      --amber:#dba449;
+      --indigo:#8f88d6;
+      --ultra:#59acdf;
+      --moss:#a9b876;
+      --plum:#c07999;
+      --tint2:#232a2b;
+      --edge2:#3d4a4d;
+      --tint3:#332120;
+      --edge3:#6e3a34;
+      --input-bg:#242a2c;
+      --lane-bg:rgba(28,33,35,.55);
+    }
+  }
+  html,body{background:var(--ground)}
   *{box-sizing:border-box}
   #app{
     font-family:var(--body);
     color:var(--ink);
     background:var(--ground);
-    background-image:linear-gradient(var(--rule) 1px,transparent 1px);
-    background-size:100% 28px;
     padding:18px;
     min-height:100%;
   }
@@ -99,7 +156,7 @@
   }
   form.intake input[type=text]::placeholder{color:var(--ink3)}
   form.intake select,form.intake input[type=date]{
-    border:1px solid var(--rule);background:#fff;padding:6px 7px;color:var(--ink);
+    border:1px solid var(--rule);background:var(--input-bg);padding:6px 7px;color:var(--ink);
     font-family:var(--mono);font-size:12px;
   }
   .file-btn{
@@ -122,9 +179,9 @@
     margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
   .lane-editor-row{display:flex;gap:6px;align-items:center}
   .lane-editor-row .le-label{flex:1 1 160px;min-width:0;border:1px solid var(--rule);
-    background:#fff;padding:6px 7px;font-size:13px;color:var(--ink)}
+    background:var(--input-bg);padding:6px 7px;font-size:13px;color:var(--ink)}
   .lane-editor-row .le-note{flex:1 1 200px;min-width:0;border:1px solid var(--rule);
-    background:#fff;padding:6px 7px;font-size:12px;color:var(--ink2)}
+    background:var(--input-bg);padding:6px 7px;font-size:12px;color:var(--ink2)}
   .lane-editor-row button.kill{font-size:16px}
   .lane-editor-row button.kill:disabled{opacity:.3;cursor:default}
   #b-lane-add{align-self:flex-start;margin-top:2px;padding:7px 14px;font-size:12px}
@@ -139,7 +196,7 @@
   /* ---- lanes ---- */
   .lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));
     gap:8px;align-items:start;padding-bottom:6px}
-  .lane{background:rgba(248,249,246,.55);border-top:3px solid var(--ink);padding:7px 6px 10px;min-width:0}
+  .lane{background:var(--lane-bg);border-top:3px solid var(--ink);padding:7px 6px 10px;min-width:0}
   .lane-p0{border-top-color:var(--brick)}
   .lane-p1{border-top-color:var(--amber)}
   .lane-p2{border-top-color:var(--pine)}
@@ -173,7 +230,7 @@
   .task-top{display:flex;gap:6px;align-items:flex-start}
   .check{
     flex:0 0 auto;width:15px;height:15px;margin-top:2px;border:1.5px solid var(--ink2);
-    background:#fff;padding:0;font-family:var(--mono);font-size:11px;line-height:1;color:var(--pine);
+    background:var(--input-bg);padding:0;font-family:var(--mono);font-size:11px;line-height:1;color:var(--pine);
   }
   .task h3{margin:0;font-size:13px;font-weight:500;line-height:1.3;flex:1;min-width:0;
     overflow-wrap:break-word}
@@ -307,6 +364,7 @@
       <button data-sort="imp" aria-pressed="false">Importance</button>
       <button id="t-lanes" aria-pressed="false">Edit buckets</button>
       <button id="t-sync" aria-pressed="false">Sync</button>
+      <button id="t-theme" aria-pressed="false">Night mode</button>
       <button id="t-done" aria-pressed="false" style="margin-left:auto">Show finished</button>
       <button id="b-export">Export</button>
       <button id="b-import">Import</button>
@@ -836,6 +894,33 @@ titleEl.addEventListener("blur",()=>{
   titleEl.textContent=v;
   if(v!==state.title){ state.title=v; syncTitle(); save(); }
 });
+
+/* ---------- theme ---------- */
+const THEME_KEY="deskboard:theme";
+function savedTheme(){ try{ return localStorage.getItem(THEME_KEY)||""; }catch(e){ return ""; } }
+function isDarkTheme(){
+  const t=document.documentElement.getAttribute("data-theme");
+  if(t) return t==="dark";
+  return window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function setTheme(t){
+  try{ t?localStorage.setItem(THEME_KEY,t):localStorage.removeItem(THEME_KEY); }catch(e){}
+  if(t) document.documentElement.setAttribute("data-theme",t);
+  else document.documentElement.removeAttribute("data-theme");
+  const dark=isDarkTheme();
+  document.getElementById("t-theme").setAttribute("aria-pressed",String(dark));
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content=dark?"#0e1112":"#15191b";
+}
+document.getElementById("t-theme").addEventListener("click",()=>{
+  setTheme(isDarkTheme()?"light":"dark");
+});
+if(window.matchMedia){
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{
+    if(!savedTheme()) setTheme("");
+  });
+}
+setTheme(savedTheme());
 
 /* ---------- buckets ---------- */
 document.getElementById("t-lanes").addEventListener("click",e=>{
