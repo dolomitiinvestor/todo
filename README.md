@@ -43,4 +43,10 @@ Notes on sync:
 - Use the **Export** button on the toolbar now and then to save a JSON backup, and
   **Import** to restore it (or move it to another device) — useful with or without Gist sync.
 - Works offline after the first load — a service worker caches the app itself.
+- Updates: the app always fetches the latest files when online, and checks for a new
+  service worker each time you open or return to it. When releasing, bump `VERSION` in
+  `sw.js` — open copies then reload onto the new version automatically.
+- **Per screen** (right of the toolbar) sets how many buckets fit across (Auto or 1–12,
+  saved per device). Extra buckets scroll sideways — swipe, or use ◀ ▶.
+- Tap a task's text (on the board or the recurring page) to edit it. Enter saves, Esc cancels.
 - No sign-up, no required server, no tracking. Sync is optional and uses your own GitHub account.

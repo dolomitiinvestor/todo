@@ -194,9 +194,20 @@
   .imp.l3 i.on{background:var(--brick);border-color:var(--brick)}
 
   /* ---- lanes ---- */
-  .lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));
-    gap:8px;align-items:start;padding-bottom:6px}
-  .lane{background:var(--lane-bg);border-top:3px solid var(--ink);padding:7px 6px 10px;min-width:0}
+  /* One row of buckets; --per of them fill the screen, the rest scroll sideways. */
+  .lanes-wrap{position:relative}
+  .lanes{--per:6;--gap:8px;display:grid;grid-auto-flow:column;
+    grid-auto-columns:calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));
+    gap:var(--gap);align-items:start;padding-bottom:10px;
+    overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;
+    -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .lane{background:var(--lane-bg);border-top:3px solid var(--ink);padding:7px 6px 10px;min-width:0;
+    scroll-snap-align:start}
+  .lane-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .lane-nav select{border:1px solid var(--rule);background:var(--input-bg);color:var(--ink2);
+    font-family:var(--mono);font-size:11px;padding:3px 4px}
+  .lane-nav button:disabled{opacity:.3;cursor:default}
+  .lane-nav .pos{min-width:52px;text-align:center}
   .lane-p0{border-top-color:var(--brick)}
   .lane-p1{border-top-color:var(--amber)}
   .lane-p2{border-top-color:var(--pine)}
@@ -206,8 +217,9 @@
   .lane-p6{border-top-color:var(--plum)}
   .lane-p7{border-top-color:var(--moss)}
   .lane-head{display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-bottom:8px}
+  .lane-head > div{min-width:0}
   .lane-head h2{font-family:var(--display);font-weight:700;text-transform:uppercase;
-    font-size:12.5px;letter-spacing:.04em;margin:0;line-height:1.1}
+    font-size:12.5px;letter-spacing:.04em;margin:0;line-height:1.1;overflow-wrap:anywhere}
   .lane-head em{display:block;font-family:var(--body);font-style:normal;font-size:9.5px;
     color:var(--ink2);letter-spacing:0;text-transform:none;font-weight:400;margin-top:2px;line-height:1.25}
   .lane-head .n{font-family:var(--mono);font-size:11px;color:var(--ink3)}
@@ -233,7 +245,11 @@
     background:var(--input-bg);padding:0;font-family:var(--mono);font-size:11px;line-height:1;color:var(--pine);
   }
   .task h3{margin:0;font-size:13px;font-weight:500;line-height:1.3;flex:1;min-width:0;
-    overflow-wrap:break-word}
+    overflow-wrap:anywhere;cursor:text;border-bottom:1px dashed transparent}
+  .task h3:hover{border-bottom-color:var(--ink3)}
+  .task h3[contenteditable=true],.rec-name h3[contenteditable=true]{outline:1.5px solid var(--slate);
+    outline-offset:2px;background:var(--input-bg);cursor:text;text-decoration:none}
+  .rec-name h3{cursor:text}
   .task.imp3 h3{font-weight:600}
   .task.done h3{text-decoration:line-through}
   .kill{flex:0 0 auto;border:0;background:transparent;color:var(--ink3);font-size:14px;line-height:1;padding:0 1px}
@@ -369,6 +385,13 @@
       <button id="b-export">Export</button>
       <button id="b-import">Import</button>
       <input type="file" id="f-import" accept=".json,application/json" style="display:none">
+      <span class="lane-nav">
+        <label for="f-per">Per screen</label>
+        <select id="f-per" aria-label="Buckets shown per screen"></select>
+        <button type="button" id="b-left" aria-label="Scroll buckets left">◀</button>
+        <span class="pos" id="lanePos"></span>
+        <button type="button" id="b-right" aria-label="Scroll buckets right">▶</button>
+      </span>
     </div>
 
     <div class="lane-editor" id="laneEditor" hidden>
@@ -451,6 +474,7 @@ const DAY=864e5;
 let state={tasks:[],recur:[],title:DEFAULT_TITLE,lanes:DEFAULT_LANES.map(L=>({...L})),updatedAt:0},
   sort="heat", showDone=false, view="board", saveTimer=null, syncPushTimer=null;
 let syncCfg={token:"",gistId:"",auto:false,lastSyncedAt:0};
+let editingId=null, renderPending=false;
 
 /* ---------- storage: saves straight to this browser/device ---------- */
 let storageOk=false;
@@ -675,6 +699,8 @@ function nextText(r){
 
 /* ---------- render ---------- */
 function render(){
+  /* Don't redraw under someone's cursor; finishing the edit re-renders. */
+  if(editingId){ renderPending=true; return; }
   const now=new Date();
   document.getElementById("stamp").textContent=
     now.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"}).toUpperCase();
@@ -702,7 +728,8 @@ function renderGauges(){
 }
 
 function renderBoard(){
-  document.getElementById("lanes").innerHTML=state.lanes.map((L,i)=>{
+  const lanesEl=document.getElementById("lanes"), keepX=lanesEl.scrollLeft;
+  lanesEl.innerHTML=state.lanes.map((L,i)=>{
     let rows=state.tasks.filter(t=>t.lane===L.id&&(showDone||!t.done));
     rows.sort((a,b)=>{
       if(a.done!==b.done) return a.done?1:-1;
@@ -722,6 +749,8 @@ function renderBoard(){
       ${rows.length?rows.map(card).join(""):`<p class="lane-empty">Nothing here.</p>`}
     </section>`;
   }).join("");
+  lanesEl.scrollLeft=keepX;
+  applyPer();
   populateLaneSelect();
   renderLaneEditor();
 }
@@ -764,7 +793,7 @@ function card(t){
   return `<article class="task imp${t.imp||2} ${t.done?"done":d.cls==="late"?"late":d.cls==="soon"?"today":""}">
     <div class="task-top">
       <button class="check" data-done="${t.id}" aria-label="Mark finished">${t.done?"✓":""}</button>
-      <h3>${esc(t.title)}</h3>
+      <h3 data-edit="${t.id}" title="Tap to edit">${esc(t.title)}</h3>
       ${dots(t.imp)}
       <button class="kill" data-kill="${t.id}" aria-label="Delete task">×</button>
     </div>
@@ -806,7 +835,7 @@ function recRow(r){
   const count=r.count?" · "+r.count+"×":"";
   return `<article class="rec imp${r.imp||2} ${n.cls}">
     <div class="rec-name">
-      <h3>${esc(r.title)}</h3>
+      <h3 data-redit="${r.id}" title="Tap to edit">${esc(r.title)}</h3>
       ${dots(r.imp)}
     </div>
     <div class="rec-when"><b class="${n.cls}">${n.txt.toUpperCase()}</b>${r.next}</div>
@@ -1031,8 +1060,103 @@ load().then(render).then(()=>{
   if(syncCfg.auto&&syncCfg.token&&syncCfg.gistId) return pullFromGist(false);
 });
 
+/* ---------- buckets per screen (per device, since screens differ) ---------- */
+const PER_KEY="deskboard:perScreen", PER_MAX=12;
+function perSetting(){ try{ return localStorage.getItem(PER_KEY)||"auto"; }catch(e){ return "auto"; } }
+function perCount(){
+  const v=perSetting(), n=state.lanes.length;
+  const want=v==="auto"
+    ? Math.max(1,Math.min(9,Math.floor(document.getElementById("lanes").clientWidth/170)))
+    : +v;
+  return Math.max(1,Math.min(want,n));
+}
+function applyPer(){
+  const el=document.getElementById("lanes");
+  el.style.setProperty("--per",perCount());
+  updateLaneNav();
+}
+function laneStep(){
+  const first=document.querySelector("#lanes .lane");
+  return first?first.getBoundingClientRect().width+8:0;
+}
+function updateLaneNav(){
+  const el=document.getElementById("lanes"), n=state.lanes.length, per=perCount();
+  const step=laneStep(), max=el.scrollWidth-el.clientWidth;
+  const first=step?Math.round(el.scrollLeft/step):0;
+  document.getElementById("b-left").disabled=el.scrollLeft<=2;
+  document.getElementById("b-right").disabled=el.scrollLeft>=max-2;
+  document.getElementById("lanePos").textContent=
+    n>per?(first+1)+"–"+Math.min(n,first+per)+" of "+n:n+" of "+n;
+}
+(function(){
+  const sel=document.getElementById("f-per");
+  sel.innerHTML=`<option value="auto">Auto</option>`+
+    Array.from({length:PER_MAX},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join("");
+  sel.value=perSetting();
+  sel.addEventListener("change",()=>{
+    try{ localStorage.setItem(PER_KEY,sel.value); }catch(e){}
+    applyPer();
+  });
+  const el=document.getElementById("lanes");
+  const page=dir=>el.scrollBy({left:dir*laneStep()*perCount()});
+  document.getElementById("b-left").addEventListener("click",()=>page(-1));
+  document.getElementById("b-right").addEventListener("click",()=>page(1));
+  el.addEventListener("scroll",()=>requestAnimationFrame(updateLaneNav),{passive:true});
+  window.addEventListener("resize",applyPer);
+})();
+
+/* ---------- edit a task's text in place ---------- */
+function startEdit(h,list,id){
+  if(editingId) return;
+  const item=list().find(x=>x.id===id); if(!item) return;
+  editingId=id;
+  const before=item.title;
+  h.contentEditable="true"; h.spellcheck=true; h.focus();
+  const r=document.createRange(); r.selectNodeContents(h);
+  const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  let cancelled=false;
+  const onKey=e=>{
+    if(e.key==="Enter"){ e.preventDefault(); h.blur(); }
+    else if(e.key==="Escape"){ cancelled=true; h.blur(); }
+  };
+  h.addEventListener("keydown",onKey);
+  h.addEventListener("blur",()=>{
+    h.removeEventListener("keydown",onKey);
+    h.contentEditable="false";
+    const v=h.textContent.replace(/\s+/g," ").trim().slice(0,140);
+    const cur=list().find(x=>x.id===id); /* a sync pull may have replaced it */
+    editingId=null;
+    if(!cancelled&&v&&cur&&v!==before){ cur.title=v; save(); }
+    renderPending=false; render();
+  },{once:true});
+}
+document.getElementById("lanes").addEventListener("click",e=>{
+  const h=e.target.closest("h3[data-edit]"); if(h) startEdit(h,()=>state.tasks,h.dataset.edit);
+});
+document.getElementById("sched").addEventListener("click",e=>{
+  const h=e.target.closest("h3[data-redit]"); if(h) startEdit(h,()=>state.recur,h.dataset.redit);
+});
+
+/* ---------- updates: check for a new version and switch to it ---------- */
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+  const hadController=!!navigator.serviceWorker.controller;
+  let reloading=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    /* First install takes control silently; later ones mean a new release. */
+    if(!hadController||reloading) return;
+    reloading=true;
+    const go=()=>location.reload();
+    if(editingId) foot("Update ready — it loads when you finish editing.");
+    (function wait(){ editingId?setTimeout(wait,1000):go(); })();
+  });
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(reg=>{
+      const check=()=>reg.update().catch(()=>{});
+      document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") check(); });
+      setInterval(check,30*60000);
+      if(reg.waiting) reg.waiting.postMessage("skipWaiting");
+    }).catch(()=>{});
+  });
 }
 </script>
 </body>
