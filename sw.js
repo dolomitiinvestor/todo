@@ -1,6 +1,6 @@
 /* Bump VERSION on each release. Any byte change here makes the browser
    install the new worker; the page then reloads onto the new version. */
-const VERSION = "2026-10-05.2";
+const VERSION = "2026-10-05.3";
 const CACHE = "deskboard-" + VERSION;
 const ASSETS = [
   "./",
