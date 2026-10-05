@@ -48,5 +48,6 @@ Notes on sync:
   `sw.js` — open copies then reload onto the new version automatically.
 - **Per screen** (right of the toolbar) sets how many buckets fit across (Auto or 1–12,
   saved per device). Extra buckets scroll sideways — swipe, or use ◀ ▶.
+- **Edit buckets**: reorder with ▲ ▼ or drag the ⠿ handle (works on touch too).
 - Tap a task's text (on the board or the recurring page) to edit it. Enter saves, Esc cancels.
 - No sign-up, no required server, no tracking. Sync is optional and uses your own GitHub account.

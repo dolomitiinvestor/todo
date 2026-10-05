@@ -184,6 +184,14 @@
     background:var(--input-bg);padding:6px 7px;font-size:12px;color:var(--ink2)}
   .lane-editor-row button.kill{font-size:16px}
   .lane-editor-row button.kill:disabled{opacity:.3;cursor:default}
+  .lane-editor-row.dragging{opacity:.55;outline:1.5px dashed var(--slate)}
+  .le-grip{flex:0 0 auto;width:26px;align-self:stretch;display:flex;align-items:center;justify-content:center;
+    color:var(--ink3);font-size:16px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+  .le-grip:hover{color:var(--ink)}
+  .le-move{flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--ink2);
+    font-size:11px;line-height:1;padding:6px 7px}
+  .le-move:hover{border-color:var(--ink);color:var(--ink)}
+  .le-move:disabled{opacity:.3;cursor:default}
   #b-lane-add{align-self:flex-start;margin-top:2px;padding:7px 14px;font-size:12px}
 
   /* ---- importance dots ---- */
@@ -764,10 +772,14 @@ function populateLaneSelect(){
 }
 
 function renderLaneEditor(){
-  document.getElementById("laneEditorRows").innerHTML=state.lanes.map(L=>`
-    <div class="lane-editor-row">
+  const n=state.lanes.length;
+  document.getElementById("laneEditorRows").innerHTML=state.lanes.map((L,i)=>`
+    <div class="lane-editor-row" data-lane-row="${L.id}">
+      <span class="le-grip" data-lane-grip="${L.id}" aria-hidden="true" title="Drag to reorder">⠿</span>
       <input type="text" class="le-label" data-lane-label="${L.id}" value="${esc(L.label)}" maxlength="40" aria-label="Bucket name">
       <input type="text" class="le-note" data-lane-note="${L.id}" value="${esc(L.note||"")}" maxlength="60" placeholder="subtitle (optional)" aria-label="Bucket subtitle">
+      <button type="button" class="le-move" data-lane-up="${L.id}" aria-label="Move bucket left"${i===0?" disabled":""}>▲</button>
+      <button type="button" class="le-move" data-lane-down="${L.id}" aria-label="Move bucket right"${i===n-1?" disabled":""}>▼</button>
       <button type="button" class="kill" data-lane-del="${L.id}" aria-label="Delete bucket"${state.lanes.length<=1?" disabled":""}>×</button>
     </div>`).join("");
 }
@@ -1012,8 +1024,52 @@ document.getElementById("laneEditor").addEventListener("change",e=>{
     save();render();
   }
 });
+/* Reorder: ▲/▼ buttons, or drag the ⠿ handle (mouse or touch). */
+function moveLane(id,to){
+  const from=state.lanes.findIndex(x=>x.id===id);
+  if(from<0||to<0||to>=state.lanes.length||to===from) return;
+  const [L]=state.lanes.splice(from,1);
+  state.lanes.splice(to,0,L);
+  save();render();
+}
+document.getElementById("laneEditor").addEventListener("pointerdown",e=>{
+  const grip=e.target.closest("[data-lane-grip]"); if(!grip) return;
+  e.preventDefault();
+  const host=document.getElementById("laneEditorRows");
+  const row=grip.closest(".lane-editor-row");
+  row.classList.add("dragging");
+  /* Listen on window: moving the row in the DOM drops pointer capture. */
+  const onMove=ev=>{
+    if(ev.pointerId!==e.pointerId) return;
+    const rows=[...host.children].filter(r=>r!==row);
+    const after=rows.find(r=>{const b=r.getBoundingClientRect();return ev.clientY<b.top+b.height/2;});
+    if(after) host.insertBefore(row,after); else host.appendChild(row);
+  };
+  const onUp=ev=>{
+    if(ev.pointerId!==e.pointerId) return;
+    window.removeEventListener("pointermove",onMove);
+    window.removeEventListener("pointerup",onUp);
+    window.removeEventListener("pointercancel",onUp);
+    row.classList.remove("dragging");
+    const to=[...host.children].indexOf(row);
+    moveLane(row.dataset.laneRow,to);
+    renderLaneEditor(); /* restore button states even if nothing moved */
+  };
+  window.addEventListener("pointermove",onMove);
+  window.addEventListener("pointerup",onUp);
+  window.addEventListener("pointercancel",onUp);
+});
 document.getElementById("laneEditor").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b||!b.dataset.laneDel) return;
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.laneUp||b.dataset.laneDown){
+    const id=b.dataset.laneUp||b.dataset.laneDown;
+    const i=state.lanes.findIndex(x=>x.id===id);
+    moveLane(id,i+(b.dataset.laneUp?-1:1));
+    const again=document.querySelector(`[data-lane-${b.dataset.laneUp?"up":"down"}="${id}"]`);
+    if(again&&!again.disabled) again.focus();
+    return;
+  }
+  if(!b.dataset.laneDel) return;
   if(state.lanes.length<=1) return;
   const L=state.lanes.find(x=>x.id===b.dataset.laneDel); if(!L) return;
   const affected=state.tasks.filter(t=>t.lane===L.id).length;
